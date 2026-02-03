@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Plantación">
+    <meta name="theme-color" content="#3a6b1f">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='50' fill='%233a6b1f'/%3E%3Ctext x='50' y='70' font-size='60' text-anchor='middle' fill='white'%3E🌱%3C/text%3E%3C/svg%3E">
+    <title>Plantación GPS</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            background: #1a1a1a;
+            color: white;
+            overflow: hidden;
+        }
+        
+        #app { width: 100vw; height: 100vh; display: flex; flex-direction: column; }
+        
+        .header {
+            background: linear-gradient(135deg, #2d5016 0%, #3a6b1f 100%);
+            padding: 12px 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+        
+        .header h1 { font-size: 18px; margin-bottom: 3px; }
+        .header .subtitle { font-size: 12px; opacity: 0.9; }
+        
+        #map { flex: 1; position: relative; }
+        
+        /* Panel de tracking */
+        .tracking-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            border: 2px solid #4CAF50;
+            border-radius: 12px;
+            padding: 15px;
+            z-index: 1000;
+        }
+        
+        .tracking-panel.recording {
+            border-color: #f44336;
+            animation: pulse-border 2s infinite;
+        }
+        
+        @keyframes pulse-border {
+            0%, 100% { border-color: #f44336; }
+            50% { border-color: #ff6b6b; }
+        }
+        
+        .tracking-status {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        
+        .status-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #666;
+        }
+        
+        .status-dot.recording {
+            background: #f44336;
+            animation: pulse-dot 1s infinite;
+        }
+        
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.2); }
+        }
+        
+        .status-text {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .tracking-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 12px 0;
+        }
+        
+        .stat-item {
+            background: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 8px;
+        }
+        
+        .stat-label {
+            font-size: 11px;
+            opacity: 0.7;
+            margin-bottom: 3px;
+        }
+        
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        
+        .gps-quality {
+            background: rgba(255,255,255,0.1);
+            padding: 8px;
+            border-radius: 6px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 12px;
+        }
+        
+        .quality-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .quality-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        
+        .quality-excellent { background: #4CAF50; }
+        .quality-good { background: #8BC34A; }
+        .quality-fair { background: #FFC107; }
+        .quality-poor { background: #f44336; }
+        
+        /* Botones */
+        button {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 8px;
+            transition: all 0.2s;
+        }
+        
+        .btn-start {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-stop {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn-finish {
+            background: #2196F3;
+            color: white;
+        }
+        
+        .btn-cancel {
+            background: #757575;
+            color: white;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+        
+        /* Info panel */
+        .info-panel {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            padding: 12px;
+            border-radius: 8px;
+            z-index: 1000;
+        }
+        
+        .info-title {
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #4CAF50;
+        }
+        
+        .info-text {
+            font-size: 12px;
+            line-height: 1.5;
+            opacity: 0.9;
+        }
+        
+        /* Setup panel */
+        .setup-panel {
+            background: white;
+            padding: 20px;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+        
+        .setup-panel h2 {
+            color: #2d5016;
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .config-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            align-items: center;
+        }
+        
+        .config-row label {
+            flex: 1;
+            font-size: 14px;
+            font-weight: 500;
+            color: #333;
+        }
+        
+        .config-row input {
+            width: 80px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .config-row span {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .hidden { display: none !important; }
+        
+        /* Toast notifications */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 10000;
+            animation: slideUp 0.3s ease;
+        }
+        
+        @keyframes slideUp {
+            from { transform: translate(-50%, 20px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+        
+        /* Mobile optimizations */
+        @media (max-width: 768px) {
+            .header h1 { font-size: 16px; }
+            .tracking-panel { padding: 12px; }
+            .stat-value { font-size: 18px; }
+            button { padding: 12px; font-size: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="header">
+            <h1>🌱 Plantación</h1>
+            <div class="subtitle">Recorre el perímetro de tu parcela con GPS</div>
+        </div>
+        
+        <!-- Panel de configuración inicial -->
+        <div class="setup-panel" id="setupPanel">
+            <h2>⚙️ Configuración de Plantación</h2>
+            
+            <div class="config-row">
+                <label>Distancia entre filas:</label>
+                <input type="number" id="rowSpacing" value="5" step="0.1" min="0.1">
+                <span>m</span>
+            </div>
+            
+            <div class="config-row">
+                <label>Distancia entre plantas:</label>
+                <input type="number" id="plantSpacing" value="6" step="0.1" min="0.1">
+                <span>m</span>
+            </div>
+            
+            <div class="config-row">
+                <label>Margen desde el borde:</label>
+                <input type="number" id="marginSize" value="1" step="0.5" min="0" max="10">
+                <span>m</span>
+            </div>
+            
+            <div style="background: #fff3cd; padding: 10px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #ffc107;">
+                <strong style="color: #856404; font-size: 13px;">💡 Margen:</strong>
+                <p style="margin: 5px 0 0 0; color: #856404; font-size: 11px; line-height: 1.4;">
+                    Espacio libre desde el borde. Útil para pasillos, riego, o evitar zonas conflictivas.
+                </p>
+            </div>
+            
+            <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin: 15px 0; border-left: 4px solid #2196F3;">
+                <strong style="color: #1976D2;">📍 Instrucciones:</strong>
+                <ol style="margin: 8px 0 0 20px; color: #333; font-size: 13px; line-height: 1.6;">
+                    <li>Activa GPS y espera buena señal (precisión < 5m)</li>
+                    <li>Ve al punto de inicio de tu parcela</li>
+                    <li>Pulsa "Iniciar Grabación"</li>
+                    <li>Camina/conduce por todo el perímetro</li>
+                    <li>Al volver al inicio, pulsa "Cerrar Parcela"</li>
+                </ol>
+            </div>
+            
+            <button class="btn-start" id="startSetup">🚀 Comenzar Grabación GPS</button>
+            
+            <div style="margin-top: 15px;">
+                <button class="btn-info" id="loadParcel" style="width: 100%; margin-bottom: 10px;">📂 Cargar Parcela Guardada</button>
+            </div>
+            
+            <div style="margin-top: 15px; padding: 12px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                <strong style="color: #856404;">⚠️ Si no te pide permiso GPS:</strong>
+                <ol style="margin: 8px 0 0 20px; color: #856404; font-size: 12px; line-height: 1.6;">
+                    <li><strong>Toca el candado 🔒 o ⓘ</strong> en la barra de dirección arriba</li>
+                    <li><strong>Permisos del sitio</strong> o <strong>Configuración del sitio</strong></li>
+                    <li><strong>Ubicación → Permitir</strong></li>
+                    <li><strong>Recarga la página</strong> (desliza hacia abajo)</li>
+                </ol>
+            </div>
+        </div>
+        
+        <div id="map" class="hidden"></div>
+        
+        <!-- Panel de tracking GPS -->
+        <div class="tracking-panel hidden" id="trackingPanel">
+            <div class="tracking-status">
+                <div class="status-dot" id="statusDot"></div>
+                <div class="status-text" id="statusText">GPS Iniciando...</div>
+            </div>
+            
+            <div class="gps-quality">
+                <div class="quality-indicator">
+                    <div class="quality-dot" id="qualityDot"></div>
+                    <span id="qualityText">--</span>
+                </div>
+                <span>Precisión: <strong id="accuracy">--</strong> m</span>
+            </div>
+            
+            <div class="tracking-stats">
+                <div class="stat-item">
+                    <div class="stat-label">PUNTOS</div>
+                    <div class="stat-value" id="pointCount">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">DISTANCIA</div>
+                    <div class="stat-value" id="distance">0 m</div>
+                </div>
+            </div>
+            
+            <div id="buttonContainer">
+                <button class="btn-start hidden" id="startRecording">🔴 INICIAR GRABACIÓN</button>
+                <button class="btn-stop hidden" id="stopRecording">⏸️ PAUSAR</button>
+                <button class="btn-finish hidden" id="finishParcel">✅ CERRAR PARCELA</button>
+                <button class="btn-cancel" id="cancelRecording">❌ Cancelar</button>
+            </div>
+        </div>
+        
+        <!-- Info panel -->
+        <div class="info-panel hidden" id="infoPanel">
+            <div class="info-title">💡 Consejo</div>
+            <div class="info-text" id="infoText">Camina a velocidad constante por el borde de la parcela</div>
+        </div>
+        
+        <!-- Debug panel -->
+        <div style="position: fixed; bottom: 10px; right: 10px; z-index: 10000;">
+            <button id="toggleDebug" style="background: #f44336; color: white; border: none; padding: 12px; border-radius: 50%; width: 50px; height: 50px; font-size: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);">
+                🐛
+            </button>
+        </div>
+        
+        <div id="debugPanel" style="display: none; position: fixed; bottom: 70px; right: 10px; left: 10px; background: rgba(0,0,0,0.95); color: #0f0; padding: 15px; border-radius: 8px; max-height: 300px; overflow-y: auto; z-index: 9999; font-family: monospace; font-size: 11px; line-height: 1.4;"></div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Consola móvil Eruda (para debugging) -->
+    <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+    <script>
+        // Activar consola móvil en pantalla
+        eruda.init();
+        console.log('=== CONSOLA MÓVIL ACTIVADA ===');
+        console.log('Toca el ícono verde en la esquina inferior derecha para ver logs');
+        
+        // Registrar Service Worker para PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js')
+                .then(reg => console.log('Service Worker registrado:', reg))
+                .catch(err => console.log('Service Worker error:', err));
+        }
+        
+        // Detectar si ya está instalada como PWA
+        window.addEventListener('DOMContentLoaded', () => {
+            const isStandalone = window.matchMedia('(display-mode: standalone)').matches 
+                               || window.navigator.standalone 
+                               || document.referrer.includes('android-app://');
+            
+            if (isStandalone) {
+                console.log('✅ App instalada como PWA');
+            } else {
+                console.log('ℹ️ Abre desde navegador. Puedes instalar como app.');
+            }
+        });
+        
+        // Prompt de instalación
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            console.log('💾 App puede instalarse');
+            
+            // Mostrar botón de instalación
+            showInstallPrompt();
+        });
+        
+        function showInstallPrompt() {
+            const installBtn = document.createElement('button');
+            installBtn.textContent = '📱 Instalar App';
+            installBtn.style.cssText = `
+                position: fixed;
+                top: 60px;
+                right: 10px;
+                background: #FF9800;
+                color: white;
+                border: none;
+                padding: 10px 15px;
+                border-radius: 8px;
+                font-weight: bold;
+                z-index: 10000;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            `;
+            installBtn.onclick = async () => {
+                if (deferredPrompt) {
+                    deferredPrompt.prompt();
+                    const { outcome } = await deferredPrompt.userChoice;
+                    console.log('Instalación:', outcome);
+                    deferredPrompt = null;
+                    installBtn.remove();
+                }
+            };
+            document.body.appendChild(installBtn);
+        }
+    </script>
+    
+    <script>
+        // Debug panel personalizado
+        const debugLogs = [];
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+            debugLogs.push('[LOG] ' + message);
+            updateDebugPanel();
+        };
+        
+        console.error = function(...args) {
+            originalConsoleError.apply(console, args);
+            const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+            debugLogs.push('[ERROR] ' + message);
+            updateDebugPanel();
+        };
+        
+        function updateDebugPanel() {
+            const panel = document.getElementById('debugPanel');
+            if (panel && panel.style.display !== 'none') {
+                panel.innerHTML = debugLogs.slice(-30).join('<br>');
+                panel.scrollTop = panel.scrollHeight;
+            }
+        }
+        
+        document.getElementById('toggleDebug').addEventListener('click', () => {
+            const panel = document.getElementById('debugPanel');
+            if (panel.style.display === 'none') {
+                panel.style.display = 'block';
+                updateDebugPanel();
+            } else {
+                panel.style.display = 'none';
+            }
+        });
+        
+        
+        // GUARDAR Y CARGAR PARCELAS
+        function saveParcel() {
+            if (!state.recordedPoints || state.recordedPoints.length < 3) {
+                showToast('❌ No hay parcela para guardar', 3000);
+                return;
+            }
+            
+            const parcelData = {
+                points: state.recordedPoints.map(p => ({ lat: p.lat, lng: p.lng })),
+                area: calculateArea(state.recordedPoints),
+                perimeter: state.totalDistance,
+                timestamp: Date.now(),
+                date: new Date().toLocaleString('es-ES')
+            };
+            
+            // Guardar en localStorage
+            localStorage.setItem('savedParcel', JSON.stringify(parcelData));
+            
+            showToast('✅ Parcela guardada en el teléfono', 3000);
+            console.log('Parcela guardada:', parcelData);
+            
+            // Actualizar botón de guardar si existe
+            const saveBtn = document.getElementById('saveParcelBtn');
+            if (saveBtn) {
+                saveBtn.textContent = '💾 Parcela Guardada ✓';
+                saveBtn.style.background = '#4CAF50';
+            }
+        }
+        
+        function loadParcel() {
+            const savedData = localStorage.getItem('savedParcel');
+            
+            if (!savedData) {
+                showToast('❌ No hay parcela guardada', 3000);
+                return;
+            }
+            
+            try {
+                const parcelData = JSON.parse(savedData);
+                console.log('Cargando parcela guardada:', parcelData);
+                
+                // Configurar spacing guardado o por defecto
+                state.rowSpacing = parseFloat(document.getElementById('rowSpacing').value);
+                state.plantSpacing = parseFloat(document.getElementById('plantSpacing').value);
+                state.marginSize = parseFloat(document.getElementById('marginSize').value);
+                
+                // Ocultar panel de setup
+                document.getElementById('setupPanel').classList.add('hidden');
+                document.getElementById('map').classList.remove('hidden');
+                document.getElementById('trackingPanel').classList.remove('hidden');
+                document.getElementById('infoPanel').classList.remove('hidden');
+                
+                // Inicializar mapa
+                initMap();
+                
+                // Recrear coordenadas
+                state.recordedPoints = parcelData.points.map(p => L.latLng(p.lat, p.lng));
+                state.totalDistance = parcelData.perimeter;
+                
+                // Crear polígono
+                state.parcelPolygon = L.polygon(state.recordedPoints, {
+                    color: '#2196F3',
+                    fillColor: '#4CAF50',
+                    fillOpacity: 0.15,
+                    weight: 4,
+                    opacity: 0.9,
+                    dashArray: '10, 5'
+                }).addTo(state.map);
+                
+                state.map.fitBounds(state.parcelPolygon.getBounds(), { padding: [50, 50] });
+                
+                // Iniciar GPS para navegación futura
+                startGPS();
+                
+                // Mostrar resumen
+                showParcelSummary(parcelData.area);
+                
+                showToast(`✅ Parcela cargada (${(parcelData.area/10000).toFixed(2)} ha)`, 3000);
+                
+                document.getElementById('infoPanel').innerHTML = `
+                    <div class="info-title">📂 Parcela Cargada</div>
+                    <div class="info-text">Guardada el: ${parcelData.date}<br>Área: ${(parcelData.area/10000).toFixed(2)} ha</div>
+                `;
+                
+            } catch (error) {
+                console.error('Error cargando parcela:', error);
+                showToast('❌ Error al cargar parcela: ' + error.message, 5000);
+            }
+        }
+        
+        function deleteParcel() {
+            if (confirm('¿Eliminar la parcela guardada?')) {
+                localStorage.removeItem('savedParcel');
+                showToast('🗑️ Parcela eliminada', 2000);
+                console.log('Parcela eliminada del localStorage');
+            }
+        }
+        
+        // Botón cargar parcela
+        document.getElementById('loadParcel').addEventListener('click', loadParcel);
+        
+        // Verificar si hay parcela guardada al cargar
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedData = localStorage.getItem('savedParcel');
+            if (savedData) {
+                try {
+                    const parcelData = JSON.parse(savedData);
+                    const loadBtn = document.getElementById('loadParcel');
+                    loadBtn.innerHTML = `📂 Cargar Parcela (${(parcelData.area/10000).toFixed(2)} ha)<br><small style="font-size: 10px;">${parcelData.date}</small>`;
+                    console.log('✅ Hay una parcela guardada disponible');
+                } catch (e) {
+                    console.error('Error parseando parcela guardada:', e);
+                }
+            }
+        });
+        
+        const state = {
+            map: null,
+            isRecording: false,
+            isPaused: false,
+            watchId: null,
+            recordedPoints: [],
+            currentPath: null,
+            userMarker: null,
+            parcelPolygon: null,
+            totalDistance: 0,
+            lastPoint: null,
+            gpsReadings: [],
+            rowSpacing: 5,
+            plantSpacing: 6,
+            marginSize: 1,
+            plantingPoints: [],
+            currentPlantIndex: 0,
+            plantedCount: 0,
+            isNavigating: false,
+            breadcrumbPath: null,
+            breadcrumbPoints: []
+        };
+
+        const config = {
+            minAccuracy: 10, // Metros
+            maxReadingsBuffer: 3,
+            minPointDistance: 2 // Metros mínimo entre puntos
+        };
+
+        // Inicializar mapa
+        function initMap() {
+            state.map = L.map('map').setView([40.0, -3.7], 16);
+            
+            // Capa base - OpenStreetMap
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OSM',
+                maxZoom: 19
+            }).addTo(state.map);
+            
+            // Capa Catastro (para referencia visual)
+            L.tileLayer.wms('https://ovc.catastro.meh.es/cartografia/INSPIRE/spadgcwms.aspx', { 
+                layers: 'CP.CadastralParcel', 
+                format: 'image/png', 
+                transparent: true, 
+                opacity: 0.4,
+                attribution: '© Catastro'
+            }).addTo(state.map);
+            
+            // Capa SIGPAC (alternativa más visible para agricultura)
+            L.tileLayer.wms('https://wms.mapama.gob.es/sig/Agricultura/SIGPAC/wms.aspx', {
+                layers: 'recinto',
+                format: 'image/png',
+                transparent: true,
+                opacity: 0.5,
+                attribution: '© SIGPAC'
+            }).addTo(state.map);
+            
+            // Capa para el path grabado (perímetro)
+            state.currentPath = L.polyline([], {
+                color: '#f44336',
+                weight: 4,
+                opacity: 0.8
+            }).addTo(state.map);
+            
+            // Capa para migas de pan (ruta de plantación)
+            state.breadcrumbPath = L.polyline([], {
+                color: '#4CAF50',
+                weight: 3,
+                opacity: 0.7,
+                dashArray: '5, 10'
+            }).addTo(state.map);
+        }
+
+        // Comenzar setup
+        document.getElementById('startSetup').addEventListener('click', () => {
+            state.rowSpacing = parseFloat(document.getElementById('rowSpacing').value);
+            state.plantSpacing = parseFloat(document.getElementById('plantSpacing').value);
+            state.marginSize = parseFloat(document.getElementById('marginSize').value);
+            
+            // Primero pedir permiso explícitamente
+            requestLocationPermission();
+        });
+        
+        // Solicitar permiso de ubicación de forma agresiva
+        async function requestLocationPermission() {
+            console.log('=== SOLICITANDO PERMISO GPS ===');
+            
+            try {
+                // Método 1: getCurrentPosition (fuerza popup de permisos)
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        console.log('✅ Permiso GPS concedido!');
+                        console.log('Primera posición:', position.coords.latitude, position.coords.longitude);
+                        
+                        // Ahora iniciar app
+                        proceedToApp();
+                    },
+                    (error) => {
+                        console.error('❌ Error obteniendo posición inicial:', error);
+                        
+                        if (error.code === 1) {
+                            alert('⚠️ PERMISO GPS DENEGADO\n\n' +
+                                  'Para usar esta app necesitas:\n\n' +
+                                  '1. Permitir ubicación cuando aparezca el popup\n' +
+                                  '2. Si no aparece popup:\n' +
+                                  '   • Toca el icono 🔒 o ⓘ en la barra URL\n' +
+                                  '   • Permisos → Ubicación → PERMITIR\n\n' +
+                                  '3. Recarga la página y vuelve a intentar');
+                        } else if (error.code === 2) {
+                            alert('⚠️ GPS NO DISPONIBLE\n\n' +
+                                  'Activa el GPS de tu móvil:\n' +
+                                  'Ajustes → Ubicación → Activado\n\n' +
+                                  'Luego sal al exterior y prueba de nuevo');
+                        } else {
+                            alert('⚠️ ERROR GPS\n\n' +
+                                  'Error: ' + error.message + '\n' +
+                                  'Código: ' + error.code);
+                        }
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 0
+                    }
+                );
+            } catch (error) {
+                console.error('Error al solicitar permiso:', error);
+                alert('❌ GPS no soportado en este navegador\n\nUsa Chrome o Safari actualizado');
+            }
+        }
+        
+        function proceedToApp() {
+            document.getElementById('setupPanel').classList.add('hidden');
+            document.getElementById('map').classList.remove('hidden');
+            document.getElementById('trackingPanel').classList.remove('hidden');
+            document.getElementById('infoPanel').classList.remove('hidden');
+            
+            initMap();
+            startGPS();
+        }
+
+        // Iniciar GPS
+        function startGPS() {
+            if (!navigator.geolocation) {
+                showToast('❌ GPS no disponible en este dispositivo');
+                updateStatus('❌ GPS no disponible', false);
+                return;
+            }
+            
+            console.log('=== INICIANDO GPS ===');
+            updateStatus('🔍 Esperando señal GPS...', false);
+            
+            // Añadir timeout visual
+            let waitTime = 0;
+            const waitInterval = setInterval(() => {
+                waitTime++;
+                updateStatus(`🔍 Esperando GPS... (${waitTime}s)`, false);
+                
+                if (waitTime >= 30) {
+                    clearInterval(waitInterval);
+                    updateStatus('⚠️ GPS tarda mucho. ¿Estás al aire libre?', false);
+                    document.getElementById('infoText').textContent = 'Si no obtienes señal: 1) Sal al exterior 2) Activa GPS en ajustes 3) Da permisos de ubicación';
+                }
+            }, 1000);
+            
+            state.watchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    clearInterval(waitInterval);
+                    updatePosition(position);
+                },
+                (error) => {
+                    clearInterval(waitInterval);
+                    handleGPSError(error);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+            
+            console.log('GPS watchPosition iniciado, watchId:', state.watchId);
+        }
+
+        // Actualizar posición GPS
+        function updatePosition(position) {
+            const lat = position.coords.latitude;
+            const lon = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+            
+            console.log(`GPS OK: lat=${lat.toFixed(6)}, lon=${lon.toFixed(6)}, acc=${accuracy.toFixed(1)}m`);
+            
+            // Primera vez que recibimos señal
+            if (!state.userMarker) {
+                showToast('✅ Señal GPS recibida!');
+                document.getElementById('startRecording').classList.remove('hidden');
+                updateStatus('✅ GPS Listo - Pulsa INICIAR cuando estés en el borde', false);
+            }
+            
+            // Actualizar calidad GPS
+            updateGPSQuality(accuracy);
+            
+            // Filtrar lecturas malas
+            if (accuracy > config.minAccuracy) {
+                console.log(`GPS filtrado: precisión ${accuracy.toFixed(1)}m > ${config.minAccuracy}m`);
+                updateStatus(`⚠️ GPS poco preciso (${accuracy.toFixed(1)}m) - Espera mejor señal`, false);
+                return;
+            }
+            
+            // Promedio de lecturas
+            state.gpsReadings.push({ lat, lon, accuracy, time: Date.now() });
+            if (state.gpsReadings.length > config.maxReadingsBuffer) {
+                state.gpsReadings.shift();
+            }
+            
+            const avgLat = state.gpsReadings.reduce((sum, r) => sum + r.lat, 0) / state.gpsReadings.length;
+            const avgLon = state.gpsReadings.reduce((sum, r) => sum + r.lon, 0) / state.gpsReadings.length;
+            
+            const currentPos = L.latLng(avgLat, avgLon);
+            
+            // IMPORTANTE: Actualizar posición actual para navegación
+            state.currentPosition = currentPos;
+            
+            // Actualizar marcador de usuario
+            if (state.userMarker) {
+                state.userMarker.setLatLng(currentPos);
+            } else {
+                state.userMarker = L.marker(currentPos, {
+                    icon: L.divIcon({
+                        className: 'user-marker',
+                        html: `<div style="width: 20px; height: 20px; background: #2196F3; border: 3px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(33,150,243,0.8);"></div>`,
+                        iconSize: [20, 20]
+                    })
+                }).addTo(state.map);
+                
+                state.map.setView(currentPos, 18);
+                console.log('Marcador de usuario creado en:', currentPos);
+            }
+            
+            // Si está grabando, añadir punto
+            if (state.isRecording && !state.isPaused) {
+                addTrackingPoint(currentPos);
+            }
+        }
+
+        // Añadir punto al tracking
+        function addTrackingPoint(latlng) {
+            // Verificar distancia mínima desde último punto
+            if (state.lastPoint) {
+                const dist = state.lastPoint.distanceTo(latlng);
+                if (dist < config.minPointDistance) {
+                    return; // Muy cerca del último punto
+                }
+                state.totalDistance += dist;
+            }
+            
+            state.recordedPoints.push(latlng);
+            state.lastPoint = latlng;
+            
+            // Actualizar path visual
+            state.currentPath.addLatLng(latlng);
+            
+            // Actualizar stats
+            document.getElementById('pointCount').textContent = state.recordedPoints.length;
+            document.getElementById('distance').textContent = Math.round(state.totalDistance) + ' m';
+            
+            // Mostrar botón de finalizar si hay suficientes puntos
+            if (state.recordedPoints.length >= 4) {
+                document.getElementById('finishParcel').classList.remove('hidden');
+            }
+            
+            // Vibrar cada 10 puntos
+            if (state.recordedPoints.length % 10 === 0 && navigator.vibrate) {
+                navigator.vibrate(50);
+            }
+        }
+
+        // Iniciar grabación
+        document.getElementById('startRecording').addEventListener('click', () => {
+            state.isRecording = true;
+            state.isPaused = false;
+            updateStatus('🔴 GRABANDO PERÍMETRO', true);
+            
+            document.getElementById('startRecording').classList.add('hidden');
+            document.getElementById('stopRecording').classList.remove('hidden');
+            document.getElementById('infoText').textContent = 'Camina por el borde de la parcela. El GPS graba automáticamente.';
+            
+            showToast('✅ Grabación iniciada');
+        });
+
+        // Pausar grabación
+        document.getElementById('stopRecording').addEventListener('click', () => {
+            state.isPaused = !state.isPaused;
+            
+            if (state.isPaused) {
+                updateStatus('⏸️ PAUSADO', false);
+                document.getElementById('stopRecording').textContent = '▶️ CONTINUAR';
+                showToast('⏸️ Grabación pausada');
+            } else {
+                updateStatus('🔴 GRABANDO PERÍMETRO', true);
+                document.getElementById('stopRecording').textContent = '⏸️ PAUSAR';
+                showToast('▶️ Grabación continuada');
+            }
+        });
+
+        // Finalizar parcela
+        document.getElementById('finishParcel').addEventListener('click', () => {
+            if (state.recordedPoints.length < 3) {
+                showToast('❌ Necesitas al menos 3 puntos');
+                return;
+            }
+            
+            // Crear polígono cerrado con estilo destacado
+            const polygon = L.polygon(state.recordedPoints, {
+                color: '#2196F3',
+                fillColor: '#4CAF50',
+                fillOpacity: 0.15,
+                weight: 4,
+                opacity: 0.9,
+                dashArray: '10, 5'
+            }).addTo(state.map);
+            
+            state.parcelPolygon = polygon;
+            
+            // Quitar path temporal
+            state.currentPath.remove();
+            
+            // Calcular área
+            const area = calculateArea(state.recordedPoints);
+            
+            // NO parar GPS - lo necesitamos para navegación
+            // El GPS seguirá actualizando state.currentPosition
+            
+            state.isRecording = false;
+            
+            // Mostrar resumen
+            showParcelSummary(area);
+        });
+
+        // Cancelar
+        document.getElementById('cancelRecording').addEventListener('click', () => {
+            if (confirm('¿Cancelar grabación? Se perderán todos los puntos.')) {
+                if (state.watchId) {
+                    navigator.geolocation.clearWatch(state.watchId);
+                }
+                location.reload();
+            }
+        });
+
+        // Mostrar resumen de parcela
+        function showParcelSummary(area) {
+            document.getElementById('trackingPanel').innerHTML = `
+                <h3 style="color: #4CAF50; margin-bottom: 15px;">✅ Parcela Grabada</h3>
+                
+                <div class="tracking-stats">
+                    <div class="stat-item">
+                        <div class="stat-label">ÁREA</div>
+                        <div class="stat-value">${(area / 10000).toFixed(2)} ha</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">PERÍMETRO</div>
+                        <div class="stat-value">${Math.round(state.totalDistance)} m</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">VÉRTICES</div>
+                        <div class="stat-value">${state.recordedPoints.length}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">SUPERFICIE</div>
+                        <div class="stat-value">${Math.round(area)} m²</div>
+                    </div>
+                </div>
+                
+                <button class="btn-finish" id="calculateGridBtn">📐 Calcular Marco ${state.rowSpacing}x${state.plantSpacing}m</button>
+                <button class="btn-info" id="saveParcelBtn">💾 Guardar Parcela</button>
+                <button class="btn-cancel" id="restartBtn">🔄 Grabar Nueva Parcela</button>
+            `;
+            
+            document.getElementById('calculateGridBtn').addEventListener('click', calculatePlantingGrid);
+            document.getElementById('saveParcelBtn').addEventListener('click', saveParcel);
+            document.getElementById('restartBtn').addEventListener('click', () => location.reload());
+            
+            document.getElementById('infoPanel').innerHTML = `
+                <div class="info-title">✅ ¡Parcela completada!</div>
+                <div class="info-text">Área: ${(area/10000).toFixed(2)} ha • Perímetro: ${Math.round(state.totalDistance)} m</div>
+            `;
+            
+            // Ajustar vista
+            state.map.fitBounds(state.parcelPolygon.getBounds(), { padding: [50, 50] });
+        }
+
+        // Calcular marco de plantación
+        function calculatePlantingGrid() {
+            console.log('=== CALCULANDO MARCO ===');
+            
+            try {
+                console.log('Row spacing:', state.rowSpacing);
+                console.log('Plant spacing:', state.plantSpacing);
+                console.log('Margin:', state.marginSize);
+                
+                const bounds = state.parcelPolygon.getBounds();
+                const ne = bounds.getNorthEast();
+                const sw = bounds.getSouthWest();
+                
+                const latPerMeter = 1 / 111320;
+                const lonPerMeter = 1 / (111320 * Math.cos(((ne.lat + sw.lat) / 2) * Math.PI / 180));
+                
+                const rowStep = state.rowSpacing * latPerMeter;
+                const plantStep = state.plantSpacing * lonPerMeter;
+                
+                const plantingPoints = [];
+                const parcelCoords = state.recordedPoints;
+                
+                console.log('Bounds:', sw.lat, sw.lng, 'to', ne.lat, ne.lng);
+                console.log('Parcel coords:', parcelCoords.length);
+                
+                let rowNum = 0;
+                let totalChecked = 0;
+                
+                for (let lat = sw.lat; lat <= ne.lat; lat += rowStep) {
+                    for (let lon = sw.lng; lon <= ne.lng; lon += plantStep) {
+                        totalChecked++;
+                        
+                        if (totalChecked % 100 === 0) {
+                            console.log('Checked:', totalChecked, 'Created:', plantingPoints.length);
+                        }
+                        
+                        const point = L.latLng(lat, lon);
+                        
+                        // Verificar que está dentro del polígono
+                        if (!isPointInPolygon(point, parcelCoords)) {
+                            continue;
+                        }
+                        
+                        // Si hay margen, verificar distancia al borde
+                        if (state.marginSize > 0) {
+                            let tooClose = false;
+                            for (let i = 0; i < parcelCoords.length; i++) {
+                                const vertexDist = point.distanceTo(parcelCoords[i]);
+                                if (vertexDist < state.marginSize) {
+                                    tooClose = true;
+                                    break;
+                                }
+                            }
+                            if (tooClose) continue;
+                        }
+                        
+                        const marker = L.circleMarker([lat, lon], {
+                            radius: 6,
+                            fillColor: '#FF6B6B',
+                            color: '#fff',
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        }).addTo(state.map);
+                        
+                        const plantPoint = {
+                            latLng: point,
+                            marker: marker,
+                            row: rowNum,
+                            planted: false,
+                            id: plantingPoints.length
+                        };
+                        
+                        plantingPoints.push(plantPoint);
+                    }
+                    if (plantingPoints.length > rowNum * 5) rowNum++; // Aproximado
+                }
+                
+                console.log('✅ Total checked:', totalChecked);
+                console.log('✅ Points created:', plantingPoints.length);
+                
+                if (plantingPoints.length === 0) {
+                    showToast('❌ No se encontraron puntos válidos. Revisa la configuración.', 5000);
+                    return;
+                }
+                
+                state.plantingPoints = plantingPoints;
+                state.currentPlantIndex = 0;
+                state.plantedCount = 0;
+                
+                showToast(`✅ ${plantingPoints.length} puntos calculados (margen: ${state.marginSize}m)`);
+                
+                // Mostrar resumen con opción de iniciar navegación
+                console.log('Mostrando resumen de puntos...');
+                showPointsSummary();
+                
+            } catch (error) {
+                console.error('❌ ERROR EN CALCULATEPLANTINGGRID:', error);
+                console.error('Error stack:', error.stack);
+                showToast('❌ Error calculando puntos: ' + error.message, 5000);
+            }
+        }
+        
+        // Mostrar resumen de puntos calculados
+        function showPointsSummary() {
+            try {
+                console.log('=== SHOWPOINTSSUMMARY ===');
+                
+                const bounds = state.parcelPolygon.getBounds();
+                const area = calculateArea(state.recordedPoints);
+                
+                document.getElementById('trackingPanel').innerHTML = `
+                    <h3 style="color: #4CAF50; margin-bottom: 15px;">✅ Puntos Calculados</h3>
+                    
+                    <div class="tracking-stats">
+                        <div class="stat-item">
+                            <div class="stat-label">PUNTOS</div>
+                            <div class="stat-value">${state.plantingPoints.length}</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">ÁREA</div>
+                            <div class="stat-value">${(area / 10000).toFixed(2)} ha</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">MARCO</div>
+                            <div class="stat-value">${state.rowSpacing}x${state.plantSpacing}m</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">MARGEN</div>
+                            <div class="stat-value">${state.marginSize}m</div>
+                        </div>
+                    </div>
+                    
+                    <div style="background: #e3f2fd; padding: 12px; border-radius: 6px; margin: 15px 0; font-size: 13px;">
+                        ✅ <strong>${state.plantingPoints.length} puntos rojos</strong> creados en el mapa<br>
+                        📍 Ya puedes ver dónde plantar<br>
+                        🎯 O activa la navegación para ir punto por punto
+                    </div>
+                    
+                    <button class="btn-success" id="startNavigation" style="width: 100%; margin-bottom: 10px;">🎯 INICIAR NAVEGACIÓN</button>
+                    <button class="btn-info" id="recalculate" style="width: 100%; margin-bottom: 10px;">🔄 Recalcular</button>
+                    <button class="btn-warning" id="deleteSaved" style="width: 100%; margin-bottom: 10px; font-size: 12px;">🗑️ Borrar Guardada</button>
+                    <button class="btn-cancel" id="restart" style="width: 100%;">← Nueva Parcela</button>
+                `;
+                
+                document.getElementById('startNavigation').addEventListener('click', () => {
+                    console.log('Usuario inició navegación');
+                    showNavigationMode();
+                });
+                
+                document.getElementById('recalculate').addEventListener('click', () => {
+                    // Limpiar puntos actuales
+                    state.plantingPoints.forEach(p => {
+                        if (p.marker) state.map.removeLayer(p.marker);
+                    });
+                    state.plantingPoints = [];
+                    
+                    // Volver al resumen de parcela
+                    const area = calculateArea(state.recordedPoints);
+                    showParcelSummary(area);
+                });
+                
+                document.getElementById('deleteSaved').addEventListener('click', deleteParcel);
+                
+                document.getElementById('restart').addEventListener('click', () => {
+                    location.reload();
+                });
+                
+                document.getElementById('infoPanel').innerHTML = `
+                    <div class="info-title">✅ Marco Calculado</div>
+                    <div class="info-text">${state.plantingPoints.length} puntos visibles en el mapa. Pulsa "Iniciar Navegación" cuando estés listo.</div>
+                `;
+                
+                // Ajustar vista al mapa
+                state.map.fitBounds(bounds, { padding: [50, 50] });
+                
+            } catch (error) {
+                console.error('❌ ERROR EN SHOWPOINTSSUMMARY:', error);
+                showToast('❌ Error mostrando puntos: ' + error.message, 5000);
+            }
+        }
+        
+        // Mostrar modo navegación
+        function showNavigationMode() {
+            try {
+                console.log('=== SHOWNAVIGATIONMODE ===');
+                console.log('Planting points:', state.plantingPoints.length);
+                console.log('Current position al iniciar nav:', state.currentPosition);
+                
+                state.isNavigating = true;
+                
+                // Inicializar breadcrumbs
+                if (!state.breadcrumbPoints || state.breadcrumbPoints.length === 0) {
+                    state.breadcrumbPoints = [];
+                    if (state.currentPosition) {
+                        state.breadcrumbPoints.push(state.currentPosition);
+                        state.breadcrumbPath.setLatLngs(state.breadcrumbPoints);
+                    }
+                    console.log('Breadcrumbs inicializados');
+                }
+                
+                const panelHTML = `
+                    <h3 style="color: #4CAF50; margin-bottom: 15px;">🎯 Modo Navegación</h3>
+                    
+                    <div style="background: rgba(76, 175, 80, 0.1); padding: 12px; border-radius: 8px; margin-bottom: 15px; border-left: 4px solid #4CAF50;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">PUNTO ACTUAL</div>
+                        <div style="font-size: 24px; font-weight: bold; color: #2c5f2d;" id="navCurrentPoint">1</div>
+                        <div style="font-size: 12px; color: #666;">de ${state.plantingPoints.length}</div>
+                    </div>
+                    
+                    <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="font-size: 36px; font-weight: bold; text-align: center; color: #2196F3; margin-bottom: 10px;" id="navDistance">--</div>
+                        <div style="text-align: center; font-size: 14px; color: #666; margin-bottom: 15px;" id="navDirection">Calculando...</div>
+                        <div style="text-align: center; font-size: 48px;" id="navArrow">↑</div>
+                    </div>
+                    
+                    <div class="gps-quality" style="margin-bottom: 15px;">
+                        <div class="quality-indicator">
+                            <div class="quality-dot" id="navQualityDot"></div>
+                            <span id="navQualityText">--</span>
+                        </div>
+                        <span>Precisión: <strong id="navAccuracy">--</strong> m</span>
+                    </div>
+                    
+                    <button class="btn-success" id="markPlanted" disabled style="width: 100%; margin-bottom: 10px;">✅ PLANTAR (lejos)</button>
+                    <button class="btn-info" id="skipPoint" style="width: 100%; margin-bottom: 10px;">⏭️ Saltar Punto</button>
+                    <button class="btn-warning" id="toggleBreadcrumb" style="width: 100%; margin-bottom: 10px; font-size: 12px;">🥖 Ocultar Ruta</button>
+                    <button class="btn-cancel" id="endNavigation">🏁 Finalizar</button>
+                `;
+                
+                console.log('Setting trackingPanel innerHTML...');
+                document.getElementById('trackingPanel').innerHTML = panelHTML;
+                
+                console.log('Adding event listeners...');
+                document.getElementById('markPlanted').addEventListener('click', markCurrentPlanted);
+                document.getElementById('skipPoint').addEventListener('click', skipToNextPoint);
+                document.getElementById('endNavigation').addEventListener('click', endNavigation);
+                document.getElementById('toggleBreadcrumb').addEventListener('click', () => {
+                    const btn = document.getElementById('toggleBreadcrumb');
+                    if (state.breadcrumbPath.options.opacity > 0) {
+                        state.breadcrumbPath.setStyle({ opacity: 0 });
+                        btn.textContent = '🥖 Mostrar Ruta';
+                    } else {
+                        state.breadcrumbPath.setStyle({ opacity: 0.7 });
+                        btn.textContent = '🥖 Ocultar Ruta';
+                    }
+                });
+                
+                console.log('Setting infoPanel innerHTML...');
+                document.getElementById('infoPanel').innerHTML = `
+                    <div class="info-title">🎯 Navegación Activa</div>
+                    <div class="info-text">Camina hacia el punto. El botón se activará cuando estés cerca (<2m)</div>
+                `;
+                
+                // Iniciar actualización de navegación
+                console.log('Starting updateNavigation...');
+                console.log('VERIFICACIÓN FINAL:');
+                console.log('- state.isNavigating:', state.isNavigating);
+                console.log('- state.currentPosition:', state.currentPosition);
+                console.log('- state.plantingPoints.length:', state.plantingPoints.length);
+                console.log('- state.currentPlantIndex:', state.currentPlantIndex);
+                
+                // Si ya tenemos posición, actualizar inmediatamente el panel
+                if (state.currentPosition && state.plantingPoints.length > 0) {
+                    const targetPoint = state.plantingPoints[0];
+                    const distance = state.currentPosition.distanceTo(targetPoint.latLng);
+                    console.log('✅ Posición disponible! Distancia inicial:', distance.toFixed(1), 'm');
+                    
+                    // Actualizar UI inmediatamente
+                    document.getElementById('navDistance').textContent = distance.toFixed(1) + ' m';
+                    document.getElementById('navDirection').textContent = 'Calculando...';
+                }
+                
+                updateNavigation();
+                console.log('✅ ShowNavigationMode completed');
+                
+            } catch (error) {
+                console.error('❌ ERROR EN SHOWNAVIGATIONMODE:', error);
+                console.error('Error stack:', error.stack);
+                showToast('❌ Error en navegación: ' + error.message, 5000);
+            }
+        }
+        
+        // Actualizar navegación en tiempo real
+        function updateNavigation() {
+            console.log('=== UPDATE NAVIGATION ===');
+            console.log('isNavigating:', state.isNavigating);
+            console.log('currentPosition:', state.currentPosition);
+            console.log('watchId:', state.watchId);
+            console.log('userMarker:', state.userMarker);
+            
+            if (!state.isNavigating) {
+                console.log('No está navegando, saliendo');
+                return;
+            }
+            
+            const currentPoint = state.plantingPoints[state.currentPlantIndex];
+            if (!currentPoint) {
+                // Todos plantados
+                console.log('No hay más puntos');
+                showNavigationComplete();
+                return;
+            }
+            
+            console.log('Punto objetivo:', currentPoint.id, currentPoint.latLng);
+            
+            // Si no hay posición GPS aún, seguir esperando
+            if (!state.currentPosition) {
+                console.log('⚠️ SIN POSICIÓN GPS - state.currentPosition es null/undefined');
+                console.log('GPS readings:', state.gpsReadings.length);
+                document.getElementById('navDistance').textContent = '-- m';
+                document.getElementById('navDirection').textContent = 'Esperando GPS...';
+                document.getElementById('navArrow').textContent = '📡';
+                setTimeout(updateNavigation, 1000);
+                return;
+            }
+            
+            console.log('✅ Tenemos posición GPS:', state.currentPosition);
+            
+            // Añadir migas de pan (registrar posición cada 2 segundos)
+            if (!state.lastBreadcrumbTime || Date.now() - state.lastBreadcrumbTime > 2000) {
+                state.breadcrumbPoints.push(state.currentPosition);
+                state.breadcrumbPath.setLatLngs(state.breadcrumbPoints);
+                state.lastBreadcrumbTime = Date.now();
+                console.log('Breadcrumb añadido, total:', state.breadcrumbPoints.length);
+            }
+            
+            // Calcular distancia y dirección
+            const distance = state.currentPosition.distanceTo(currentPoint.latLng);
+            const bearing = calculateBearing(state.currentPosition, currentPoint.latLng);
+            const direction = bearingToDirection(bearing);
+            const arrow = bearingToArrow(bearing);
+            
+            console.log('Distancia:', distance.toFixed(1), 'm');
+            console.log('Dirección:', direction, arrow);
+            
+            // Actualizar UI
+            document.getElementById('navDistance').textContent = distance.toFixed(1) + ' m';
+            document.getElementById('navDirection').textContent = direction;
+            document.getElementById('navArrow').textContent = arrow;
+            
+            // Activar botón si está cerca
+            const markBtn = document.getElementById('markPlanted');
+            if (distance <= 2) {
+                markBtn.disabled = false;
+                markBtn.textContent = '✅ PLANTAR AQUÍ';
+                markBtn.style.background = '#4CAF50';
+                if (navigator.vibrate) navigator.vibrate(50);
+            } else {
+                markBtn.disabled = true;
+                markBtn.textContent = `✅ PLANTAR (${distance.toFixed(1)}m)`;
+                markBtn.style.background = '#999';
+            }
+            
+            // Actualizar punto actual
+            document.getElementById('navCurrentPoint').textContent = state.currentPlantIndex + 1;
+            
+            // Repetir
+            setTimeout(updateNavigation, 500);
+        }
+        
+        // Marcar punto como plantado
+        function markCurrentPlanted() {
+            const currentPoint = state.plantingPoints[state.currentPlantIndex];
+            if (!currentPoint) return;
+            
+            currentPoint.planted = true;
+            currentPoint.marker.setStyle({ fillColor: '#4CAF50', fillOpacity: 0.8 });
+            state.plantedCount++;
+            
+            showToast(`✅ Punto ${state.currentPlantIndex + 1} plantado`);
+            if (navigator.vibrate) navigator.vibrate(200);
+            
+            // Pasar al siguiente
+            skipToNextPoint();
+        }
+        
+        // Saltar al siguiente punto
+        function skipToNextPoint() {
+            // Buscar siguiente punto no plantado
+            for (let i = state.currentPlantIndex + 1; i < state.plantingPoints.length; i++) {
+                if (!state.plantingPoints[i].planted) {
+                    state.currentPlantIndex = i;
+                    // Centrar mapa en nuevo punto
+                    state.map.setView(state.plantingPoints[i].latLng, 18);
+                    return;
+                }
+            }
+            
+            // No hay más puntos
+            showNavigationComplete();
+        }
+        
+        // Finalizar navegación
+        function endNavigation() {
+            if (confirm(`¿Finalizar navegación?\n\nPlantados: ${state.plantedCount}/${state.plantingPoints.length}`)) {
+                showNavigationComplete();
+            }
+        }
+        
+        // Mostrar resumen final
+        function showNavigationComplete() {
+            state.isNavigating = false;
+            
+            const percentage = (state.plantedCount / state.plantingPoints.length * 100).toFixed(1);
+            
+            document.getElementById('trackingPanel').innerHTML = `
+                <h3 style="color: #4CAF50; margin-bottom: 15px;">🎉 ¡Completado!</h3>
+                
+                <div class="tracking-stats">
+                    <div class="stat-item">
+                        <div class="stat-label">PLANTADOS</div>
+                        <div class="stat-value">${state.plantedCount}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">TOTAL</div>
+                        <div class="stat-value">${state.plantingPoints.length}</div>
+                    </div>
+                    <div class="stat-item" style="grid-column: 1 / -1;">
+                        <div class="stat-label">COMPLETADO</div>
+                        <div class="stat-value">${percentage}%</div>
+                    </div>
+                </div>
+                
+                <button class="btn-info" id="continueNav" style="width: 100%; margin-bottom: 10px;">↩️ Continuar Navegación</button>
+                <button class="btn-cancel" id="restart" style="width: 100%;">🔄 Nueva Parcela</button>
+            `;
+            
+            document.getElementById('continueNav').addEventListener('click', () => {
+                state.isNavigating = true;
+                showNavigationMode();
+            });
+            
+            document.getElementById('restart').addEventListener('click', () => location.reload());
+            
+            document.getElementById('infoPanel').innerHTML = `
+                <div class="info-title">✅ Plantación completada</div>
+                <div class="info-text">${state.plantedCount} de ${state.plantingPoints.length} puntos plantados (${percentage}%)</div>
+            `;
+        }
+        
+        // Calcular bearing entre dos puntos
+        function calculateBearing(from, to) {
+            const lat1 = from.lat * Math.PI / 180;
+            const lat2 = to.lat * Math.PI / 180;
+            const dLon = (to.lng - from.lng) * Math.PI / 180;
+            
+            const y = Math.sin(dLon) * Math.cos(lat2);
+            const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+            
+            return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+        }
+        
+        // Convertir bearing a dirección
+        function bearingToDirection(bearing) {
+            const directions = ['Norte', 'Noreste', 'Este', 'Sureste', 'Sur', 'Suroeste', 'Oeste', 'Noroeste'];
+            return directions[Math.round(bearing / 45) % 8];
+        }
+        
+        // Convertir bearing a flecha
+        function bearingToArrow(bearing) {
+            const arrows = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
+            return arrows[Math.round(bearing / 45) % 8];
+        }
+
+        // Verificar punto en polígono
+        function isPointInPolygon(point, polygon) {
+            let inside = false;
+            const x = point.lng, y = point.lat;
+            
+            for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+                const xi = polygon[i].lng, yi = polygon[i].lat;
+                const xj = polygon[j].lng, yj = polygon[j].lat;
+                
+                const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+                if (intersect) inside = !inside;
+            }
+            
+            return inside;
+        }
+
+        // Calcular área
+        function calculateArea(coords) {
+            const R = 6371000;
+            let area = 0;
+            
+            for (let i = 0; i < coords.length; i++) {
+                const j = (i + 1) % coords.length;
+                const lat1 = coords[i].lat;
+                const lon1 = coords[i].lng;
+                const lat2 = coords[j].lat;
+                const lon2 = coords[j].lng;
+                
+                area += (lon2 - lon1) * (Math.sin(lat1 * Math.PI / 180) + Math.sin(lat2 * Math.PI / 180));
+            }
+            
+            return Math.abs(area * R * R / 2);
+        }
+
+        // Actualizar calidad GPS
+        function updateGPSQuality(accuracy) {
+            document.getElementById('accuracy').textContent = accuracy.toFixed(1);
+            
+            const qualityDot = document.getElementById('qualityDot');
+            const qualityText = document.getElementById('qualityText');
+            
+            if (accuracy <= 2) {
+                qualityDot.className = 'quality-dot quality-excellent';
+                qualityText.textContent = 'Excelente';
+            } else if (accuracy <= 5) {
+                qualityDot.className = 'quality-dot quality-good';
+                qualityText.textContent = 'Buena';
+            } else if (accuracy <= 10) {
+                qualityDot.className = 'quality-dot quality-fair';
+                qualityText.textContent = 'Aceptable';
+            } else {
+                qualityDot.className = 'quality-dot quality-poor';
+                qualityText.textContent = 'Pobre';
+            }
+        }
+
+        // Actualizar estado
+        function updateStatus(text, recording) {
+            document.getElementById('statusText').textContent = text;
+            const dot = document.getElementById('statusDot');
+            const panel = document.getElementById('trackingPanel');
+            
+            if (recording) {
+                dot.classList.add('recording');
+                panel.classList.add('recording');
+            } else {
+                dot.classList.remove('recording');
+                panel.classList.remove('recording');
+            }
+        }
+
+        // Manejar errores GPS
+        function handleGPSError(error) {
+            console.error('=== ERROR GPS ===');
+            console.error('Código:', error.code);
+            console.error('Mensaje:', error.message);
+            
+            let message = '';
+            let suggestion = '';
+            
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    message = '❌ Permiso GPS denegado';
+                    suggestion = 'Ve a Ajustes → Apps → Navegador → Permisos → Ubicación → PERMITIR';
+                    updateStatus('❌ Sin permiso GPS', false);
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    message = '❌ Posición no disponible';
+                    suggestion = 'Sal al exterior. El GPS no funciona bien en interiores.';
+                    updateStatus('❌ GPS no disponible', false);
+                    break;
+                case error.TIMEOUT:
+                    message = '⏱️ Timeout GPS';
+                    suggestion = 'Tardó mucho. Sal al exterior y prueba de nuevo.';
+                    updateStatus('⏱️ GPS timeout - reiniciando...', false);
+                    // Reintentar
+                    setTimeout(startGPS, 2000);
+                    break;
+                default:
+                    message = '❌ Error GPS desconocido';
+                    suggestion = 'Verifica que el GPS esté activado en Ajustes.';
+                    updateStatus('❌ Error GPS', false);
+            }
+            
+            showToast(message, 5000);
+            document.getElementById('infoText').textContent = suggestion;
+        }
+
+        // Toast notifications
+        function showToast(message, duration = 3000) {
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) existingToast.remove();
+            
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => toast.remove(), duration);
+        }
+    </script>
+</body>
+</html>
